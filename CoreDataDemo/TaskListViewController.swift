@@ -6,24 +6,20 @@
 //
 
 import UIKit
-import CoreData
-
-protocol TaskViewControllereDelegate {
-    func reloadData()
-}
 
 class TaskListViewController: UITableViewController {
-    
-    private let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+
     private let cellID = "cell"
     private var taskList: [Task] = []
+    private var task: Task?
+    private var cellIndexPath: Int?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: cellID)
         setupNavigationBar()
-        fetchData()
+        taskList = StorageManager.shared.fetchData()
     }
 
     private func setupNavigationBar() {
@@ -57,17 +53,9 @@ class TaskListViewController: UITableViewController {
     
     @objc private func addNewTask() {
         showAlert(with: "New Task", and: "What do you want to do?")
+        task = StorageManager.shared.createTask()
     }
     
-    private func fetchData() {
-        let fetchRequest: NSFetchRequest<Task> = Task.fetchRequest()
-        
-        do {
-            taskList = try context.fetch(fetchRequest)
-        } catch let error {
-            print(error)
-        }
-    }
     
     private func showAlert(with title: String, and message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
@@ -84,23 +72,24 @@ class TaskListViewController: UITableViewController {
         present(alert, animated: true)
     }
     
-    private func save(_ taskName: String) {
-        guard let entityDescription = NSEntityDescription.entity(forEntityName: "Task", in: context) else { return }
-        guard let task = NSManagedObject(entity: entityDescription, insertInto: context) as? Task else { return }
-        task.title = taskName
-        taskList.append(task)
+    private func save(_ taskTitle: String) {
+        guard let task = task else { return }
+        let title = task.title
         
-        let cellIndex = IndexPath(row: taskList.count - 1, section: 0)
-        tableView.insertRows(at: [cellIndex], with: .automatic)
-        
-        if context.hasChanges {
-            do {
-                try context.save()
-            } catch let error {
-                print(error.localizedDescription)
-            }
+        if title != nil {
+            task.title = taskTitle
+            guard let index = cellIndexPath else { return }
+            let cellIndex = IndexPath(row: index, section: 0)
+            tableView.reloadRows(at: [cellIndex], with: .automatic)
+        } else {
+            task.title = taskTitle
+            taskList.append(task)
+            let cellIndex = IndexPath(row: taskList.count - 1, section: 0)
+            tableView.insertRows(at: [cellIndex], with: .automatic)
         }
+        StorageManager.shared.saveContext()
     }
+
 }
 
 // MARK: - UITableViewDataSource
@@ -117,12 +106,21 @@ extension TaskListViewController {
         cell.contentConfiguration = content
         return cell
     }
-}
-
-// MARK: - TaskViewControllereDelegate
-extension TaskListViewController: TaskViewControllereDelegate {
-    func reloadData() {
-        fetchData()
-        tableView.reloadData()
+    
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        task = taskList[indexPath.row]
+        cellIndexPath = indexPath.row
+        showAlert(with: "Edit task", and: "What do you want to change")
+    }
+    
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete {
+            StorageManager.shared.deleteTask(taskList[indexPath.row])
+            
+            taskList.remove(at: indexPath.row)
+            let cellIndex = IndexPath(row: indexPath.row, section: 0)
+            tableView.deleteRows(at: [cellIndex], with: .automatic)
+        }
     }
 }
+
